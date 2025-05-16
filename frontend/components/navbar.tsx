@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { LogoIcon } from "@/components/logo-icon"
+import { ConnectButton } from "@mysten/dapp-kit"
+import "@mysten/dapp-kit/dist/index.css";
 
 export function Navbar() {
   const pathname = usePathname()
@@ -39,13 +41,14 @@ export function Navbar() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
-          <Button
+          {/* <Button
             variant="outline"
             size="sm"
             className="hidden sm:flex border-slate-700 hover:bg-slate-800 hover:text-primary"
           >
             Connect Wallet
-          </Button>
+          </Button> */}
+          <ConnectButton />
           <Button size="sm" className="bg-gradient-to-r from-[#33A3FF] to-[#8EE6FF] text-slate-900 hover:opacity-90">
             Launch App
           </Button>
