@@ -109,6 +109,9 @@ module vault::vault {
         // Get the user's collateral in the USDC vault
         let collateral = collateral_balance_of(collateral_vault, who);
 
+        if (!table::contains(&lender_vault.debts, who)) {
+            table::add(&mut lender_vault.debts, who, 0);
+        };
         // checks if borrowed amount is less than underutilised collateral
         let debt_ref = table::borrow_mut(&mut lender_vault.debts, who);
         let max_value = 3 * (collateral - (*debt_ref / 3));

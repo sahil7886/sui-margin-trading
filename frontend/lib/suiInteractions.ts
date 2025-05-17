@@ -13,6 +13,16 @@ const DEFAULT_GAS_BUDGET = 20_000_000n; // Example gas budget, adjust as needed
 const COLLATERAL_PACKAGE_ID = process.env.NEXT_PUBLIC_Collateral_Package_ID!;
 const COLLATERAL_VAULT_OBJECT_ID = process.env.NEXT_PUBLIC_Collateral_Vault_ID!;
 const COLLATERAL_MODULE_NAME = 'reserve'; // from collateral.move
+const BORROWER_VAULT_OBJECT_ID = process.env.NEXT_PUBLIC_BORROWER_VAULT_OBJECT_ID!;
+const BORROWER_MODULE_NAME = 'borrower_funds'; 
+const BORROWER_PACKAGE_ID = process.env.NEXT_PUBLIC_BORROWER_PACKAGE_ID!; 
+
+// --- Manual debt tracking (temporary workaround) ---
+let manualDebt: bigint = 0n;
+
+export function getManualDebt(): bigint {
+    return manualDebt;
+}
 
 /**
  * Creates and proposes a deposit transaction for the lending vault.
@@ -217,3 +227,139 @@ export async function withdrawCollateral(
         throw error;
     }
 }
+
+/**
+ * Opens a borrow position by calling the borrow function in the vault.
+ * @param amountMIST The amount of SUI to borrow in MIST.
+ * @param userAddress The address of the user initiating the borrow.
+ * @param signer An async function to sign and execute the transaction.
+ * @returns The result of the transaction execution.
+ */
+export async function open(
+    amountMIST: bigint,
+    userAddress: string,
+    signer: (args: { transaction: Transaction; options?: any; requestType?: any; }) => Promise<any>
+) {
+    if (!signer) throw new Error('Wallet not connected or signer not available');
+    if (!userAddress) throw new Error('User address not provided');
+    if (amountMIST <= 0n) throw new Error('Borrow amount must be positive.');
+
+    const txb = new Transaction();
+    txb.setSender(userAddress);
+    txb.setGasBudget(DEFAULT_GAS_BUDGET);
+
+    txb.moveCall({
+        target: `${PACKAGE_ID}::${VAULT_MODULE_NAME}::borrow`,
+        arguments: [
+            txb.object(VAULT_OBJECT_ID),
+            txb.object(COLLATERAL_VAULT_OBJECT_ID),
+            txb.object(BORROWER_VAULT_OBJECT_ID),
+            txb.pure.u64(amountMIST.toString())
+        ],
+    });
+
+    try {
+        const result = await signer({ transaction: txb, options: { showInput: true } });
+        console.log('Borrow (open) transaction successful:', result);
+        // --- Update manual debt tracker ---
+        manualDebt += amountMIST;
+        return result;
+    } catch (error) {
+        console.error('Error during borrow (open) transaction:', error);
+        throw error;
+    }
+}
+
+/**
+ * Closes a borrow position by calling the repay function in the vault.
+ * @param userAddress The address of the user initiating the repay.
+ * @param signer An async function to sign and execute the transaction.
+ * @returns The result of the transaction execution.
+ */
+export async function close(
+    userAddress: string,
+    signer: (args: { transaction: Transaction; options?: any; requestType?: any; }) => Promise<any>
+) {
+    if (!signer) throw new Error('Wallet not connected or signer not available');
+    if (!userAddress) throw new Error('User address not provided');
+
+    const txb = new Transaction();
+    txb.setSender(userAddress);
+    txb.setGasBudget(DEFAULT_GAS_BUDGET); // Good practice, though repay might not split coins
+
+    txb.moveCall({
+        target: `${PACKAGE_ID}::${VAULT_MODULE_NAME}::repay`,
+        arguments: [
+            txb.object(VAULT_OBJECT_ID),
+            txb.object(BORROWER_VAULT_OBJECT_ID)
+        ],
+    });
+
+    try {
+        const result = await signer({ transaction: txb, options: { showInput: true } });
+        console.log('Repay (close) transaction successful:', result);
+        // --- Reset manual debt tracker ---
+        manualDebt = 0n;
+        return result;
+    } catch (error) {
+        console.error('Error during repay (close) transaction:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetches the current debt amount for a user from the vault.
+ * @param userAddress The address of the user.
+ * @param suiClient A SuiClient instance.
+ * @returns The user's debt amount in MIST as a bigint.
+ */
+export async function getDebtAmount(
+    userAddress: string,
+    suiClient: SuiClient
+): Promise<bigint> {
+    if (!userAddress) throw new Error('User address not provided');
+    if (!suiClient) throw new Error('SuiClient not provided');
+
+    try {
+        // 1) Fetch the dynamic-field object for this key
+        const df = await suiClient.getDynamicFieldObject({
+            parentId: VAULT_OBJECT_ID,
+            name: { type: 'address', value: userAddress },
+        });
+        // 2) If no such child, debt = 0
+        if (!df || !df.data?.objectId) return 0n;
+
+        // 3) Grab that child object to read its fields
+        const child = await suiClient.getObject({
+            id: df.data.objectId,
+            options: { showContent: true },
+        });
+        const childData = child.data;
+        if (!childData) {
+            throw new Error('Dynamic field child object not found');
+        }
+        // Type guard for SuiParsedData
+        const content = childData.content;
+        if (!content || content.dataType !== 'moveObject') {
+            throw new Error(`Expected moveObject content, got: ${content?.dataType ?? 'undefined'}`);
+        }
+        const fields = content.fields as Record<string, any>;
+        if (!fields || typeof fields.value !== 'string') {
+            throw new Error('Debt value field missing or not a string');
+        }
+        // 4) The `value` field is your u128 debt (as a decimal string)
+        return BigInt(fields.value);
+    } catch (e: any) {
+        // If the RPC tells you "no such dynamic field", that just means zero
+        if (
+            e.code === 'DYNAMIC_FIELD_NOT_FOUND' ||
+            /dynamic field not found/i.test(e.message)
+        ) {
+            return 0n;
+        }
+        // Log unexpected errors for easier debugging
+        console.error('Error in getDebtAmount:', e);
+        throw e;
+    }
+}
+

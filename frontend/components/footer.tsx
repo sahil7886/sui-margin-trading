@@ -18,26 +18,44 @@ export function Footer() {
             </div>
 
             <div className="flex items-center gap-4">
-              <Image
-                src="/placeholder.svg?height=24&width=24"
-                alt="Pyth"
+              {/* Original Next.js Image component for Pyth logo commented out for testing */}
+              {/* <Image
+                src="/logos/pyth-logo.svg"
+                alt="Pyth Network"
                 width={24}
                 height={24}
                 className="opacity-70 hover:opacity-100 transition-opacity"
+              /> */}
+              <img
+                src="/logos/pyth-logo.svg"
+                alt="Pyth Network"
+                width={24}
+                height={24}
+                className="opacity-70 hover:opacity-100 transition-opacity"
+                style={{ width: '24px', height: '24px' }} // Added inline style for explicit sizing
               />
-              <Image
-                src="/placeholder.svg?height=24&width=24"
+              {/* <Image
+                src="/logos/deepbook-logo.svg"
                 alt="DeepBook"
                 width={24}
                 height={24}
                 className="opacity-70 hover:opacity-100 transition-opacity"
-              />
-              <Image
-                src="/placeholder.svg?height=24&width=24"
-                alt="Sui"
+              /> */}
+              {/* Original Next.js Image component for Sui logo commented out for testing */}
+              {/* <Image
+                src="/logos/sui-logo.svg"
+                alt="Sui Blockchain"
                 width={24}
                 height={24}
                 className="opacity-70 hover:opacity-100 transition-opacity"
+              /> */}
+              <img
+                src="/logos/sui-logo.svg"
+                alt="Sui Blockchain"
+                width={24}
+                height={24}
+                className="opacity-70 hover:opacity-100 transition-opacity"
+                style={{ width: '24px', height: '24px' }} // Added inline style for explicit sizing
               />
             </div>
           </div>
