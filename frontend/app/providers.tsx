@@ -14,12 +14,12 @@ const { networkConfig } = createNetworkConfig({
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // Creating the QueryClient **inside** the client component avoids
-  // the “Only plain objects…” RSC error.
+  // the "Only plain objects…" RSC error.
   const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000 } } });
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
+      <SuiClientProvider networks={networkConfig} defaultNetwork="devnet">
         <WalletProvider autoConnect>
           {children}
         </WalletProvider>

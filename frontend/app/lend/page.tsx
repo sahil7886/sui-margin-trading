@@ -1,15 +1,135 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GlassCard } from "@/components/glass-card"
 import { ProgressBar } from "@/components/progress-bar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { depositSui, withdrawSui } from "@/lib/suiInteractions"; // Assuming suiInteractions.ts is in lib
 
 export default function LendPage() {
   const [amount, setAmount] = useState("")
-  const [token, setToken] = useState("USDC")
+  const [token, setToken] = useState("SUI") // Default to SUI as it's the only one enabled
+  const [totalSuppliedUsd, setTotalSuppliedUsd] = useState<string | null>(null)
+  const [isLoadingTotalSupplied, setIsLoadingTotalSupplied] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [txError, setTxError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecuteTxAsync } = useSignAndExecuteTransaction();
+  const suiClient = useSuiClient();
+
+  // Define fetchTotalSupplied using useCallback to memoize it
+  const fetchTotalSupplied = useCallback(async () => {
+    setIsLoadingTotalSupplied(true);
+    setFetchError(null);
+    const userAddress = account?.address;
+    console.log('Current user address for API call:', userAddress || 'No user address');
+
+    if (!userAddress) {
+      console.warn('User address not available. Skipping fetchTotalSupplied.');
+      setTotalSuppliedUsd('N/A (Connect Wallet)');
+      setIsLoadingTotalSupplied(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/total-supplied?userAddress=${userAddress}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch total supplied: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setTotalSuppliedUsd(data.balanceUsd ? `$${data.balanceUsd}` : 'Error loading data');
+    } catch (err) {
+      console.error("Error fetching total supplied:", err);
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred";
+      setFetchError(errorMessage);
+      setTotalSuppliedUsd('Error');
+    } finally {
+      setIsLoadingTotalSupplied(false);
+    }
+  }, [account?.address]); // Dependency: account?.address
+
+  useEffect(() => {
+    fetchTotalSupplied();
+  }, [fetchTotalSupplied]); // useEffect now depends on the memoized fetchTotalSupplied
+
+  const handleSupply = async () => {
+    if (!account || !account.address) {
+      setTxError("Please connect your wallet.");
+      return;
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+      setTxError("Please enter a valid amount.");
+      return;
+    }
+    if (token !== "SUI") {
+      setTxError("Currently, only SUI deposits are supported.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setTxError(null);
+
+    try {
+      // Assuming amount is in SUI, convert to MIST (1 SUI = 10^9 MIST)
+      const amountMIST = BigInt(parseFloat(amount) * 1e9);
+      await depositSui(
+        amountMIST,
+        account.address, // Pass userAddress
+        suiClient,       // Pass suiClient
+        signAndExecuteTxAsync // Pass the async mutate function
+      );
+      // Optionally: show success message, refetch total supplied, clear amount
+      setAmount("");
+      fetchTotalSupplied(); 
+    } catch (err) {
+      console.error("Error during supply transaction:", err);
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred during supply.";
+      setTxError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!account || !account.address) {
+      setTxError("Please connect your wallet.");
+      return;
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+      setTxError("Please enter a valid amount to withdraw.");
+      return;
+    }
+    if (token !== "SUI") {
+      setTxError("Currently, only SUI withdrawals are supported.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setTxError(null);
+
+    try {
+      // Assuming amount is in SUI, convert to MIST
+      const amountMIST = BigInt(parseFloat(amount) * 1e9);
+      await withdrawSui(
+        amountMIST,
+        signAndExecuteTxAsync // Pass the async mutate function
+      );
+      // Optionally: show success message, refetch total supplied, clear amount
+      setAmount("");
+      fetchTotalSupplied();
+    } catch (err) {
+      console.error("Error during withdraw transaction:", err);
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred during withdrawal.";
+      setTxError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="container py-12">
@@ -23,7 +143,7 @@ export default function LendPage() {
                 <div className="flex-1">
                   <Input
                     type="text"
-                    placeholder="Amount"
+                    placeholder="Amount (e.g., 10 SUI)"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="bg-slate-800/50 border-slate-700"
@@ -35,21 +155,31 @@ export default function LendPage() {
                       <SelectValue placeholder="Token" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USDC">USDC</SelectItem>
                       <SelectItem value="SUI">SUI</SelectItem>
+                      {/* <SelectItem value="USDC">USDC</SelectItem>
                       <SelectItem value="ETH">ETH</SelectItem>
-                      <SelectItem value="BTC">BTC</SelectItem>
+                      <SelectItem value="BTC">BTC</SelectItem> */}
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="bg-gradient-to-r from-[#33A3FF] to-[#8EE6FF] text-slate-900 hover:opacity-90">
-                  Supply
+                <Button 
+                  className="bg-gradient-to-r from-[#33A3FF] to-[#8EE6FF] text-slate-900 hover:opacity-90"
+                  onClick={handleSupply}
+                  disabled={isSubmitting || !account}
+                >
+                  {isSubmitting ? "Submitting..." : "Supply"}
                 </Button>
               </div>
 
-              <Button variant="outline" className="w-full border-slate-700 hover:bg-slate-800">
-                Withdraw Assets
+              <Button 
+                variant="outline" 
+                className="w-full border-slate-700 hover:bg-slate-800"
+                onClick={handleWithdraw}
+                disabled={isSubmitting || !account}
+              >
+                {isSubmitting ? "Submitting..." : "Withdraw Assets"}
               </Button>
+              {txError && <p className="text-red-500 text-sm mt-2">{txError}</p>}
             </div>
           </GlassCard>
 
@@ -57,7 +187,15 @@ export default function LendPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Total Supplied</span>
-                <span className="font-tomorrow text-xl">$125,000</span>
+                {
+                  isLoadingTotalSupplied ? (
+                    <span className="font-tomorrow text-xl">Loading...</span>
+                  ) : fetchError ? (
+                    <span className="font-tomorrow text-xl text-red-500">{totalSuppliedUsd}</span>
+                  ) : (
+                    <span className="font-tomorrow text-xl text-green-400">{totalSuppliedUsd}</span>
+                  )
+                }
               </div>
 
               <div className="flex justify-between items-center">
@@ -82,13 +220,18 @@ export default function LendPage() {
               </div>
 
               <div className="space-y-2">
-                <ProgressBar
-                  value={2.6}
-                  max={5}
-                  label="Liquidation Buffer"
-                  valueFormatter={(v) => `${v.toFixed(1)} yrs`}
-                  barClassName={(v) => (v > 2 ? "bg-green-500" : "bg-yellow-500")}
-                />
+                {(() => {
+                  const liquidationBufferValue = 2.6;
+                  return (
+                    <ProgressBar
+                      value={liquidationBufferValue}
+                      max={5}
+                      label="Liquidation Buffer"
+                      valueFormatter={(v: number) => `${v.toFixed(1)} yrs`}
+                      barClassName={liquidationBufferValue > 2 ? "bg-green-500" : "bg-yellow-500"}
+                    />
+                  );
+                })()}
                 <p className="text-xs text-slate-400">
                   Estimated time before liquidation events may occur at current market conditions.
                 </p>

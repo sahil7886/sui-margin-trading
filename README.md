@@ -5,13 +5,16 @@ frontend setup --> frontend/README
 
 backend setup ?
 
+done so far:
+- vault, supporting SUI tokens only
+- vault deposits, withdrawals
+
+
 TODO:
-- add pool assets: USDC, SUI
-- lending pool: depositing and withdrawing to/from vault
 - interest accrues to entire pool and distributes to lenders based on when they deposited
 - interest index: every borrower/lender starts at 1 when they open/deposit. the interest index ticks up every block based on borrowers' interest
-- utilisation cap: 80% 
-- APY rates: 
+- utilisation cap: 80%
+- APY rates:
     - utlisation : APY
     - 0-10% : very low
     - 20-40% : low-medium

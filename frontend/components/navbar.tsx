@@ -48,7 +48,6 @@ export function Navbar() {
           >
             Connect Wallet
           </Button> */}
-          {/* TODO: style the connect button using ConnectModal */}
           <ConnectButton />
           <Button size="sm" className="bg-gradient-to-r from-[#33A3FF] to-[#8EE6FF] text-slate-900 hover:opacity-90">
             Launch App
